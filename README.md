@@ -22,7 +22,7 @@ In your compose use `image: rynomarree/filestash-authenticate-proxy:latest` (or 
 
 ## Backend (e.g. OMV Samba) and attribute mapping
 
-For backends that require login (e.g. Samba, SFTP) you always set the **password** in Filestash—the plugin only provides the **username** (from the header):
+For backends that require user login (e.g. Samba, SFTP) you always set the **password** in Filestash—the plugin only provides the **username** (from the header):
 
 - **Admin → Backend → Attribute mapping:** **Username** = `{{ .user }}`, **Password** = the shared backend password (one literal for this backend).
 
