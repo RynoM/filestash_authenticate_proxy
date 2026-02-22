@@ -1,0 +1,8 @@
+# Build uses COPY server/plugin/... ; keep context minimal
+.env.local
+.env.local.example
+*.md
+docker-compose.local.yml
+build.sh
+.git
+.gitignore

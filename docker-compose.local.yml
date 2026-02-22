@@ -1,0 +1,73 @@
+# Local test stack: Traefik + Tinyauth + Filestash (custom image with proxy_header plugin).
+# Run from repo root: docker-compose -f docker-compose.local.yml --env-file .env.local up -d
+# Build image first: ./build.sh (or ./build.sh -g then docker-compose build).
+# Then open http://files.lvh.me (Tinyauth at http://tinyauth.lvh.me).
+# ---------------------------------------------------------------------------
+
+services:
+  traefik:
+    image: traefik:v3.6.6
+    container_name: traefik-local
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=filestash-local"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - filestash-local
+
+  tinyauth:
+    image: ghcr.io/steveiliop56/tinyauth:v4
+    container_name: tinyauth-local
+    environment:
+      # Tinyauth requires "at least second level domain"; *.localhost can fail. lvh.me → 127.0.0.1
+      - APP_URL=http://tinyauth.lvh.me
+      # Google SSO, set in .env.local: TINYAUTH_GOOGLE_CLIENT_ID, TINYAUTH_GOOGLE_CLIENT_SECRET
+      - PROVIDERS_GOOGLE_CLIENT_ID=${TINYAUTH_GOOGLE_CLIENT_ID:-}
+      - PROVIDERS_GOOGLE_CLIENT_SECRET=${TINYAUTH_GOOGLE_CLIENT_SECRET:-}
+    networks:
+      - filestash-local
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tinyauth-local.rule=Host(`tinyauth.lvh.me`)"
+      - "traefik.http.routers.tinyauth-local.entrypoints=web"
+      - "traefik.http.services.tinyauth-local.loadbalancer.server.port=3000"
+
+  filestash:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: filestash-with-proxy-auth
+    container_name: filestash-local
+    environment:
+      - APPLICATION_URL=files.lvh.me
+    volumes:
+      - filestash-local-data:/app/data/state
+    networks:
+      - filestash-local
+    extra_hosts:
+      - "nas:192.168.5.2" 
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.filestash-local.rule=Host(`files.lvh.me`)"
+      - "traefik.http.routers.filestash-local.entrypoints=web"
+      - "traefik.http.routers.filestash-local.middlewares=tinyauth-local@docker"
+      - "traefik.http.services.filestash-local.loadbalancer.server.port=8334"
+      # Middleware here so Traefik always has it when this router is created (Docker discovery order is not guaranteed)
+      - "traefik.http.middlewares.tinyauth-local.forwardauth.address=http://tinyauth:3000/api/auth/traefik"
+      - "traefik.http.middlewares.tinyauth-local.forwardauth.authResponseHeaders=Remote-User,Remote-Email,Remote-Name"
+      - "tinyauth.apps.files.path.allow=^/admin"
+
+networks:
+  filestash-local:
+    name: filestash-local
+    driver: bridge
+
+volumes:
+  filestash-local-data:
+    name: filestash-local-data
